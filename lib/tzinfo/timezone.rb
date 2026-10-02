@@ -656,6 +656,156 @@ module TZInfo
       end
     end
 
+    # Converts an interval of local times for the time zone to UTC.
+    #
+    # The interval is treated as half-open: `from` is inclusive and `to` is
+    # exclusive. The UTC offsets of the `from` and `to` parameters are ignored
+    # (they are treated as local times for the time zone represented by
+    # `self`).
+    #
+    # Unlike {local_to_utc}, which converts a single local time and raises
+    # {PeriodNotFound} or {AmbiguousTime} when that local time is invalid or
+    # ambiguous, this method converts a whole interval, taking any number of
+    # intervening transitions into account (including partial-hour
+    # adjustments and changes of a whole day or more).
+    #
+    # A {LocalIntervalConversion} is returned that describes the result:
+    #
+    # - {LocalIntervalConversion#utc_intervals} contains half-open `Range`s of
+    #   UTC {Timestamp} instances covering the local interval. The `Range`s
+    #   are sorted and do not overlap. Adjacent `Range`s are merged, so each
+    #   `Range` is a maximal continuous period of UTC time that has an
+    #   equivalent local time within the converted interval.
+    # - {LocalIntervalConversion#gaps} contains half-open `Range`s of local
+    #   {Timestamp} instances within the converted interval that do not exist
+    #   (for example, when the clocks are put forward). These local times are
+    #   not represented in {#utc_intervals}.
+    # - {LocalIntervalConversion#repeated} contains half-open `Range`s of
+    #   local {Timestamp} instances within the converted interval that occur
+    #   more than once (for example, when the clocks are put back).
+    #
+    # The `repeated` parameter selects how local times that occur more than
+    # once are represented in {#utc_intervals}:
+    #
+    # - `:all` (the default) includes the UTC equivalents of every occurrence.
+    # - `:first` includes only the UTC equivalents of the first (earliest)
+    #   occurrence of each repeated local time.
+    # - `:last` includes only the UTC equivalents of the last (latest)
+    #   occurrence of each repeated local time.
+    #
+    # Local times that do not exist are never included in the result,
+    # regardless of the `repeated` parameter.
+    #
+    # Sub-second components of `from` and `to` are retained in the results
+    # (with `Rational` precision).
+    #
+    # For example, the following converts the interval from 01:15 to 02:45 on
+    # 31 October 2004 in Europe/London (a day when the clocks went back and
+    # 01:00 to 02:00 occurred twice):
+    #
+    #     tz = TZInfo::Timezone.get('Europe/London')
+    #     result = tz.local_interval_to_utc(Time.new(2004,10,31,1,15,0), Time.new(2004,10,31,2,45,0))
+    #     result.utc_intervals # => [2004-10-31 00:15:00 UTC...2004-10-31 02:45:00 UTC]
+    #     result.gaps        # => []
+    #     result.repeated    # => [2004-10-31 01:00:00...2004-10-31 02:00:00]
+    #
+    # @param from [Object] a `Time`, `DateTime` or {Timestamp} specifying the
+    #   start (inclusive) of the local interval.
+    # @param to [Object] a `Time`, `DateTime` or {Timestamp} specifying the
+    #   end (exclusive) of the local interval.
+    # @param repeated [Symbol] `:all`, `:first` or `:last`, selecting which
+    #   occurrences of repeated local times are included in the result.
+    # @return [LocalIntervalConversion] the result of the conversion.
+    # @raise [ArgumentError] if either `from` or `to` is `nil`.
+    # @raise [ArgumentError] if `to` is not greater than `from`.
+    # @raise [ArgumentError] if `repeated` is not `:all`, `:first` or `:last`.
+    def local_interval_to_utc(from, to, repeated = :all)
+      raise ArgumentError, 'from must be specified' unless from
+      raise ArgumentError, 'to must be specified' unless to
+      raise ArgumentError, 'repeated must be :all, :first or :last' unless [:all, :first, :last].include?(repeated)
+
+      from = Timestamp.for(from, :ignore)
+      to = Timestamp.for(to, :ignore)
+      raise ArgumentError, 'to must be greater than from' unless to > from
+
+      # The UTC equivalent of a local time always differs from that local
+      # time by less than 2 days (observed UTC offsets are always less than
+      # +/- 15 hours).
+      search_from = from.add_and_set_utc_offset(-172800, :utc)
+      search_to = to.add_and_set_utc_offset(172800, :utc)
+
+      periods = [period_for_utc(search_from)]
+      transitions_up_to(search_to, search_from).each do |transition|
+        periods << period_for_utc(transition.at)
+      end
+
+      # Determine the range of local times covered by each period, limited to
+      # the requested interval.
+      coverings = periods.map do |period|
+        local_start = period.local_starts_at
+        local_end = period.local_ends_at
+        local_start = local_start ? Timestamp.for(local_start, :ignore) : from
+        local_end = local_end ? Timestamp.for(local_end, :ignore) : to
+        local_start = from if local_start < from
+        local_end = to if local_end > to
+        [local_start, local_end, period] if local_start < local_end
+      end.compact
+
+      # Split the interval at each boundary between periods. The set of
+      # periods covering the local times between two adjacent boundaries is
+      # constant.
+      boundaries = [from, to]
+      coverings.each {|local_start, local_end, _| boundaries << local_start << local_end }
+      boundaries = boundaries.uniq.sort
+
+      utc_intervals = []
+      gaps = []
+      repeated_intervals = []
+
+      boundaries.each_cons(2) do |segment_start, segment_end|
+        covering = coverings.select {|local_start, local_end, _| local_start <= segment_start && local_end >= segment_end }
+
+        if covering.empty?
+          gaps << (segment_start...segment_end)
+        else
+          if covering.length > 1
+            repeated_intervals << (segment_start...segment_end)
+
+            # The periods are in chronological order, so the first and last
+            # covering periods give the earliest and latest occurrences.
+            case repeated
+            when :first
+              covering = [covering.first]
+            when :last
+              covering = [covering.last]
+            end
+          end
+
+          covering.each do |_, _, period|
+            offset = period.observed_utc_offset
+            utc_intervals << (segment_start.add_and_set_utc_offset(-offset, :utc)...segment_end.add_and_set_utc_offset(-offset, :utc))
+          end
+        end
+      end
+
+      # Sort the UTC intervals and merge any that are adjacent. Each local
+      # time maps to a distinct UTC time for each period that covers it and
+      # the UTC times of different periods never overlap, so merging only
+      # occurs where intervals meet exactly.
+      utc_intervals.sort_by! {|range| range.begin }
+      merged = []
+
+      utc_intervals.each do |range|
+        if !merged.empty? && merged.last.end >= range.begin
+          merged[-1] = (merged.last.begin...range.end)
+        else
+          merged << range
+        end
+      end
+
+      LocalIntervalConversion.new(merged, gaps, repeated_intervals)
+    end
+
     # Creates a `Time` object based on the given (Gregorian calendar) date and
     # time parameters. The parameters are interpreted as a local time in the
     # time zone. The result has the appropriate `utc_offset`, `zone` and

@@ -1,5 +1,14 @@
 # Changes
 
+## Unreleased
+
+* Added `Timezone#local_interval_to_utc`, which converts a half-open interval
+  of local times to UTC. It returns a `TZInfo::LocalIntervalConversion`
+  containing the non-overlapping half-open UTC ranges covered by the interval
+  together with the local sub-intervals that do not exist (gaps) and those
+  that occur more than once (repeated). A `repeated` option (`:all`, `:first`
+  or `:last`) selects which occurrences of repeated local times are included.
+
 ## Version 2.0.6 - 28-Jan-2023
 
 * Eliminate `Object#untaint` deprecation warnings on JRuby 9.4.0.0. #145.
