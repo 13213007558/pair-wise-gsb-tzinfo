@@ -1,5 +1,16 @@
 # Changes
 
+## Unreleased
+
+* Added `TZInfo::ZoneIdentifier`, an offline tool that finds all candidate
+  time zones consistent with a set of logged observations (UTC time, displayed
+  local time and an optional abbreviation). Each observation is checked
+  against the historical rules in force at the time it was recorded.
+  Indistinguishable candidates (including aliases of canonical zones) are
+  returned as a group; when no candidate matches, a minimal set of mutually
+  incompatible observations is reported.
+
+
 ## Version 2.0.6 - 28-Jan-2023
 
 * Eliminate `Object#untaint` deprecation warnings on JRuby 9.4.0.0. #145.

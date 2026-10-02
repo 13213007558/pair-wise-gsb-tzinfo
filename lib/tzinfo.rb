@@ -64,6 +64,8 @@ require_relative 'tzinfo/timezone_proxy'
 require_relative 'tzinfo/country'
 require_relative 'tzinfo/country_timezone'
 
+require_relative 'tzinfo/zone_identifier'
+
 require_relative 'tzinfo/format2'
 require_relative 'tzinfo/format2/country_definer'
 require_relative 'tzinfo/format2/country_index_definer'
