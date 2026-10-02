@@ -260,6 +260,30 @@ tz.local_time(2018, 11, 4, 1, 30, 0, 0) {|p| p.last }
 # => 2018-11-04 01:30:00 -0500
 ```
 
+A sequence of local times can be disambiguated from the allowed real interval
+between consecutive events. Callers must explicitly choose whether equal UTC
+times are allowed:
+
+```ruby
+local_times = [Time.utc(2018, 11, 4, 1, 0), Time.utc(2018, 11, 4, 1, 30),
+               Time.utc(2018, 11, 4, 2, 0)]
+
+result = tz.disambiguate_local_times(
+  local_times,
+  order: :non_decreasing,
+  min_interval: 30 * 60,
+  max_interval: 90 * 60
+)
+
+result.statuses               # => [:ambiguous, :ambiguous, :unique]
+result.possible_utc_times[1]  # => EDT and EST interpretations as TZInfo::Timestamp
+```
+
+Skipped local times remain invalid. A result that cannot satisfy the order or
+interval constraints reports the zero-based `conflict_index` and reason. The
+algorithm uses linear time and space and does not enumerate all candidate
+combinations.
+
 The default value of the `dst` parameter can also be set globally:
 
 ```ruby

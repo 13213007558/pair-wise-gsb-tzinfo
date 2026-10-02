@@ -4,6 +4,19 @@
 # The top level module for TZInfo.
 module TZInfo
   class << self
+    # Resolves ambiguities in an ordered sequence of local times. See
+    # {Timezone#disambiguate_local_times} for details.
+    #
+    # @param timezone [Object] either a {Timezone} or a time zone identifier.
+    # @param local_times [Enumerable<Object>] local `Time`, `DateTime` or
+    #   {Timestamp} instances in chronological order.
+    # @param options [Hash] the sequence order and interval options.
+    # @return [LocalTimeSequenceResult] the result of resolving the sequence.
+    def disambiguate_local_times(timezone, local_times, options = {})
+      timezone = Timezone.get(timezone) unless timezone.kind_of?(Timezone)
+      timezone.disambiguate_local_times(local_times, options)
+    end
+
     # Instructs the current {DataSource} to load all timezone and country data
     # into memory (initializing the {DataSource} first if not previously
     # accessed or set).
@@ -55,6 +68,7 @@ require_relative 'tzinfo/data_sources/zoneinfo_data_source'
 require_relative 'tzinfo/timezone_period'
 require_relative 'tzinfo/offset_timezone_period'
 require_relative 'tzinfo/transitions_timezone_period'
+require_relative 'tzinfo/local_time_sequence'
 require_relative 'tzinfo/timezone'
 require_relative 'tzinfo/info_timezone'
 require_relative 'tzinfo/data_timezone'

@@ -528,6 +528,40 @@ module TZInfo
       end
     end
 
+    # Resolves an ordered sequence of local times for this time zone to UTC,
+    # using bounds on the real interval between consecutive events to determine
+    # which repeated-hour interpretation applies.
+    #
+    # Local times that fall in a skipped hour are always invalid. They are not
+    # normalized or shifted to another time.
+    #
+    # The result is a {LocalTimeSequenceResult}. Each input local time is
+    # either uniquely resolved, left with the possible UTC times that remain, or
+    # identified as the first position at which the sequence constraints become
+    # impossible.
+    #
+    # Resolution runs in linear time relative to the number of local times and
+    # does not enumerate or retain all candidate combinations. Each local time
+    # normally has at most two candidates.
+    #
+    # @param local_times [Enumerable<Object>] local `Time`, `DateTime` or
+    #   {Timestamp} instances in chronological order. Their offsets are ignored.
+    # @param options [Hash] options for resolving the sequence.
+    # @option options [Symbol] :order either `:non_decreasing` to allow equal
+    #   UTC times, or `:strictly_increasing` to require every event to occur
+    #   later than the preceding event. This option is required.
+    # @option options [Numeric] :min_interval (0) the minimum permitted real
+    #   interval between consecutive events, in seconds (inclusive).
+    # @option options [Numeric] :max_interval (nil) the maximum permitted real
+    #   interval between consecutive events, in seconds (inclusive).
+    # @return [LocalTimeSequenceResult] the resolved, partially resolved, or
+    #   impossible result.
+    # @raise [ArgumentError] if `local_times` is empty, contains `nil`, or an
+    #   option is invalid or `:order` is not specified.
+    def disambiguate_local_times(local_times, options = {})
+      LocalTimeSequence.new(self, local_times, options).resolve
+    end
+
     # Converts a time to the local time for the time zone.
     #
     # The result will be of type {TimeWithOffset} (if passed a `Time`),
