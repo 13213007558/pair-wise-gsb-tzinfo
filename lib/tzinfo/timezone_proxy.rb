@@ -46,6 +46,11 @@ module TZInfo
       real_timezone.transitions_up_to(to, from)
     end
 
+    # (see Timezone#local_to_utc_interval)
+    def local_to_utc_interval(local_start_time, local_end_time, occurrence = :all)
+      real_timezone.local_to_utc_interval(local_start_time, local_end_time, occurrence)
+    end
+
     # (see Timezone#canonical_zone)
     def canonical_zone
       real_timezone.canonical_zone

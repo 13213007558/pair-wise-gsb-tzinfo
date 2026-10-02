@@ -32,6 +32,11 @@ module TZInfo
       @linked_timezone.transitions_up_to(to, from)
     end
 
+    # (see Timezone#local_to_utc_interval)
+    def local_to_utc_interval(local_start_time, local_end_time, occurrence = :all)
+      @linked_timezone.local_to_utc_interval(local_start_time, local_end_time, occurrence)
+    end
+
     # Returns the canonical {Timezone} instance for this {LinkedTimezone}.
     #
     # For a {LinkedTimezone}, this is the canonical zone of the link target.

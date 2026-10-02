@@ -656,6 +656,45 @@ module TZInfo
       end
     end
 
+    # Converts a half-open local wall-clock interval to the UTC time covered by
+    # that interval. The start is included and the end is excluded.
+    #
+    # Unlike converting both endpoints with {local_to_utc} and joining the
+    # results, this method accounts for intervals that contain one or more
+    # transitions. Skipped local intervals are omitted from the UTC result and
+    # returned separately. Repeated local intervals can either include all
+    # occurrences, or just the earlier or later occurrence.
+    #
+    # Rational sub-seconds are retained.
+    #
+    # @param local_start_time [Object] the inclusive local start as a `Time`,
+    #   `DateTime` or {Timestamp}. Its UTC offset is ignored.
+    # @param local_end_time [Object] the exclusive local end as a `Time`,
+    #   `DateTime` or {Timestamp}. Its UTC offset is ignored.
+    # @param occurrence [Symbol] controls which UTC occurrences are returned
+    #   for repeated local time: `:all` (the default), `:first` for the
+    #   earlier UTC occurrence or `:last` for the later UTC occurrence.
+    # @return [TimezoneIntervalConversion] the non-overlapping half-open UTC
+    #   intervals together with the missing and repeated local intervals.
+    # @raise [ArgumentError] if either local time is `nil`.
+    # @raise [ArgumentError] if `local_end_time` is not later than
+    #   `local_start_time`.
+    # @raise [ArgumentError] if `occurrence` is not `:all`, `:first` or
+    #   `:last` (or one of their supported aliases).
+    def local_to_utc_interval(local_start_time, local_end_time, occurrence = :all)
+      raise_unknown_timezone
+    end
+
+    # (see #local_to_utc_interval)
+    def local_to_utc_intervals(local_start_time, local_end_time, occurrence = :all)
+      local_to_utc_interval(local_start_time, local_end_time, occurrence)
+    end
+
+    # (see #local_to_utc_interval)
+    def local_to_utc_segments(local_start_time, local_end_time, occurrence = :all)
+      local_to_utc_interval(local_start_time, local_end_time, occurrence)
+    end
+
     # Creates a `Time` object based on the given (Gregorian calendar) date and
     # time parameters. The parameters are interpreted as a local time in the
     # time zone. The result has the appropriate `utc_offset`, `zone` and
