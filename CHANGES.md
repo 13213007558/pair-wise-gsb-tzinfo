@@ -1,5 +1,20 @@
 # Changes
 
+## Unreleased
+
+* Added opt-in leap second support. The new
+  `TZInfo::DataSources::LeapAwareZoneinfoDataSource` reads leap second data
+  from zoneinfo files (including TZif version 4 files with a leap second
+  expiration time) and exposes it as a `TZInfo::LeapSeconds::LeapSecondTable`.
+  The new `TZInfo::LeapSeconds::LeapTimestamp` class distinguishes ordinary
+  UTC seconds, inserted leap seconds (23:59:60) and positions on a continuous
+  seconds axis. Times at or after the expiration of the leap second table
+  raise `TZInfo::LeapSeconds::LeapSecondTableExpired` and UTC seconds removed
+  by a negative leap second raise `TZInfo::LeapSeconds::UtcSecondNotFound`.
+  The existing `Time`- and `DateTime`-based interfaces are unchanged and
+  continue to use POSIX semantics (ignoring leap seconds).
+
+
 ## Version 2.0.6 - 28-Jan-2023
 
 * Eliminate `Object#untaint` deprecation warnings on JRuby 9.4.0.0. #145.

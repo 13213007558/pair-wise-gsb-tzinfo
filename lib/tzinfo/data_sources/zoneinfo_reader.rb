@@ -9,6 +9,10 @@ module TZInfo
     end
 
     # Reads compiled zoneinfo TZif (\0, 2 or 3) files.
+    #
+    # {ZoneinfoReader#read} rejects files that contain leap second data.
+    # {ZoneinfoReader#read_with_leap_seconds} additionally supports TZif
+    # version 4 files and returns any leap second data found.
     class ZoneinfoReader #:nodoc:
       # The year to generate transitions up to.
       #
@@ -39,7 +43,25 @@ module TZInfo
       # @raise [InvalidZoneinfoFile] if `file_path`` does not refer to a valid
       #   zoneinfo file.
       def read(file_path)
-        File.open(file_path, 'rb') { |file| parse(file) }
+        File.open(file_path, 'rb') { |file| parse(file, false) }
+      end
+
+      # Reads a zoneinfo structure from the given path, also returning any
+      # leap second data contained in the file. Supports TZif version 4
+      # files (including the optional leap second expiration time) in
+      # addition to the versions supported by {#read}.
+      #
+      # @param file_path [String] the path of a zoneinfo file.
+      # @return [Array] a two element `Array` containing either a
+      #   {TimezoneOffset} or an `Array` of {TimezoneTransition}s (as
+      #   returned by {#read}) and a {LeapSeconds::LeapSecondTable} (or
+      #   `nil` if the file does not contain leap second data).
+      # @raise [SecurityError] if safe mode is enabled and `file_path` is
+      #   tainted.
+      # @raise [InvalidZoneinfoFile] if `file_path`` does not refer to a
+      #   valid zoneinfo file.
+      def read_with_leap_seconds(file_path)
+        File.open(file_path, 'rb') { |file| parse(file, true) }
       end
 
       private
@@ -334,13 +356,21 @@ module TZInfo
       end
 
       # Parses a zoneinfo file and returns either a {TimezoneOffset} that is
-      # constantly observed or an `Array` of {TimezoneTransition}s.
+      # constantly observed or an `Array` of {TimezoneTransition}s. When
+      # `with_leap_seconds` is `true`, TZif version 4 files are supported,
+      # leap second data is read and the result is a two element `Array` of
+      # the zoneinfo structure and a {LeapSeconds::LeapSecondTable} (or
+      # `nil`).
       #
       # @param file [IO] the file to be read.
+      # @param with_leap_seconds [Boolean] whether to read leap second data
+      #   (and support TZif version 4 files).
       # @return [Object] either a {TimezoneOffset} or an `Array` of
-      #   {TimezoneTransition}s.
+      #   {TimezoneTransition}s, or, when `with_leap_seconds` is `true`, a
+      #   two element `Array` of the zoneinfo structure and a
+      #   {LeapSeconds::LeapSecondTable} or `nil`.
       # @raise [InvalidZoneinfoFile] if the file is not a valid zoneinfo file.
-      def parse(file)
+      def parse(file, with_leap_seconds)
         magic, version, ttisutccnt, ttisstdcnt, leapcnt, timecnt, typecnt, charcnt =
           check_read(file, 44).unpack('a4 a x15 NNNNNN')
 
@@ -348,7 +378,7 @@ module TZInfo
           raise InvalidZoneinfoFile, "The file '#{file.path}' does not start with the expected header."
         end
 
-        if version == '2' || version == '3'
+        if version == '2' || version == '3' || (version == '4' && with_leap_seconds)
           # Skip the first 32-bit section and read the header of the second 64-bit section
           file.seek(timecnt * 5 + typecnt * 6 + charcnt + leapcnt * 8 + ttisstdcnt + ttisutccnt, IO::SEEK_CUR)
 
@@ -362,13 +392,13 @@ module TZInfo
           end
 
           using_64bit = true
-        elsif version != '3' && version != '2' && version != "\0"
+        elsif version != "\0"
           raise InvalidZoneinfoFile, "The file '#{file.path}' contains a version of the zoneinfo format that is not currently supported."
         else
           using_64bit = false
         end
 
-        unless leapcnt == 0
+        if leapcnt != 0 && !with_leap_seconds
           raise InvalidZoneinfoFile, "The file '#{file.path}' contains leap second data. TZInfo requires zoneinfo files that omit leap seconds."
         end
 
@@ -399,9 +429,23 @@ module TZInfo
 
         abbrev = check_read(file, charcnt)
 
+        if with_leap_seconds && leapcnt > 0
+          leap_records = leapcnt.times.map do
+            if using_64bit
+              high, low, correction = check_read(file, 12).unpack('NNN'.freeze)
+              [make_signed_int64(high, low), make_signed_int32(correction)]
+            else
+              transition, correction = check_read(file, 8).unpack('NN'.freeze)
+              [make_signed_int32(transition), make_signed_int32(correction)]
+            end
+          end
+        end
+
+        expires_at = nil
+
         if using_64bit
           # Skip to the POSIX-style TZ string.
-          file.seek(ttisstdcnt + ttisutccnt, IO::SEEK_CUR) # + leapcnt * 8, but leapcnt is checked above and guaranteed to be 0.
+          file.seek(ttisstdcnt + ttisutccnt, IO::SEEK_CUR)
           tz_string_start = check_read(file, 1)
           raise InvalidZoneinfoFile, "Expected newline starting POSIX-style TZ string in file '#{file.path}'." unless tz_string_start == "\n"
           tz_string = file.readline("\n").force_encoding(Encoding::UTF_8)
@@ -412,9 +456,27 @@ module TZInfo
           rescue InvalidPosixTimeZone => e
             raise InvalidZoneinfoFile, "Failed to parse POSIX-style TZ string in file '#{file.path}': #{e}"
           end
+
+          if version == '4'
+            # A TZif version 4 footer may be followed by an 8-byte leap
+            # second expiration time.
+            remaining = file.read
+
+            if remaining && remaining.length > 0
+              unless remaining.length == 8
+                raise InvalidZoneinfoFile, "Expected an 8 byte leap second expiration time in file '#{file.path}'."
+              end
+
+              high, low = remaining.unpack('NN'.freeze)
+              expires_at = make_signed_int64(high, low)
+              expires_at = nil if expires_at == 0
+            end
+          end
         else
           rules = nil
         end
+
+        leap_second_table = leap_records ? build_leap_second_table(file, version, leap_records, expires_at) : nil
 
         # Derive the offsets from standard time (std_offset).
         first_offset_index = derive_offsets(transitions, offsets)
@@ -452,7 +514,7 @@ module TZInfo
         first_offset = offsets[first_offset_index]
 
 
-        if transitions.empty?
+        result = if transitions.empty?
           if rules
             apply_rules_without_transitions(file, first_offset, rules)
           else
@@ -474,6 +536,40 @@ module TZInfo
 
           apply_rules_with_transitions(file, transitions, offsets, rules) if rules
           transitions
+        end
+
+        with_leap_seconds ? [result, leap_second_table] : result
+      end
+
+      # Builds a {LeapSeconds::LeapSecondTable} from leap second records
+      # read from a zoneinfo file.
+      #
+      # @param file [IO] the file being processed.
+      # @param version [String] the TZif version of the file.
+      # @param leap_records [Array<Array>] an `Array` of
+      #   `[transition, correction]` pairs as stored in the file.
+      # @param expires_at [Integer] the leap second expiration time, or
+      #   `nil` if the file does not define one.
+      # @return [LeapSeconds::LeapSecondTable] the {LeapSecondTable}.
+      # @raise [InvalidZoneinfoFile] if the leap second records are not
+      #   valid.
+      def build_leap_second_table(file, version, leap_records, expires_at)
+        entries = []
+        previous_correction = 0
+
+        leap_records.each do |transition, correction|
+          # In TZif versions prior to 4, leap second transition times
+          # include the leap seconds that occurred before them. In version
+          # 4, transition times are POSIX times that exclude leap seconds.
+          posix_time = version == '4' ? transition : transition - previous_correction
+          entries << [posix_time, correction]
+          previous_correction = correction
+        end
+
+        begin
+          LeapSeconds::LeapSecondTable.new(entries, expires_at)
+        rescue ArgumentError => e
+          raise InvalidZoneinfoFile, "Invalid leap second data in file '#{file.path}': #{e.message}"
         end
       end
     end

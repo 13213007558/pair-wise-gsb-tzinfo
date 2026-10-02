@@ -308,18 +308,14 @@ module TZInfo
         path = File.join(@zoneinfo_dir, valid_identifier)
 
         zoneinfo = begin
-          @zoneinfo_reader.read(path)
+          read_zoneinfo_file(path)
         rescue Errno::EACCES, InvalidZoneinfoFile => e
           raise InvalidTimezoneIdentifier, "#{e.message.encode(Encoding::UTF_8)} (loading #{valid_identifier})"
         rescue Errno::EISDIR, Errno::ENAMETOOLONG, Errno::ENOENT, Errno::ENOTDIR
           raise InvalidTimezoneIdentifier, "Invalid identifier: #{valid_identifier}"
         end
 
-        if zoneinfo.kind_of?(TimezoneOffset)
-          ConstantOffsetDataTimezoneInfo.new(valid_identifier, zoneinfo)
-        else
-          TransitionsDataTimezoneInfo.new(valid_identifier, zoneinfo)
-        end
+        create_timezone_info(valid_identifier, zoneinfo)
       end
 
       # (see DataSource#load_country_info)
@@ -328,6 +324,31 @@ module TZInfo
       end
 
       private
+
+      # Reads a zoneinfo file. Used by {load_timezone_info}.
+      #
+      # @param path [String] the path of the zoneinfo file.
+      # @return [Object] either a {TimezoneOffset} or an `Array` of
+      #   {TimezoneTransition}s.
+      def read_zoneinfo_file(path)
+        @zoneinfo_reader.read(path)
+      end
+
+      # Creates a {TimezoneInfo} instance from a zoneinfo structure returned
+      # by {read_zoneinfo_file}.
+      #
+      # @param identifier [String] the time zone identifier.
+      # @param zoneinfo [Object] either a {TimezoneOffset} or an `Array` of
+      #   {TimezoneTransition}s.
+      # @return [TimezoneInfo] a {ConstantOffsetDataTimezoneInfo} or
+      #   {TransitionsDataTimezoneInfo}.
+      def create_timezone_info(identifier, zoneinfo)
+        if zoneinfo.kind_of?(TimezoneOffset)
+          ConstantOffsetDataTimezoneInfo.new(identifier, zoneinfo)
+        else
+          TransitionsDataTimezoneInfo.new(identifier, zoneinfo)
+        end
+      end
 
       # Validates a zoneinfo directory and returns the paths to the iso3166.tab
       # and zone1970.tab or zone.tab files if valid. If the directory is not
