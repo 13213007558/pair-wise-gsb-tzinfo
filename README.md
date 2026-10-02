@@ -35,6 +35,26 @@ The default data source selection can be overridden by calling
 Custom data sources can also be used. See the `TZInfo::DataSource.set`
 documentation for further details.
 
+### Leap-Second-Aware Zoneinfo
+
+Ordinary `Time` and `DateTime` conversions continue to use POSIX semantics.
+For historical data in TZif v4 files that include a leap second table, opt in
+to `TZInfo::DataSources::LeapAwareZoneinfoDataSource`:
+
+```ruby
+TZInfo::DataSource.set(:leap_aware_zoneinfo, '/usr/share/zoneinfo')
+
+table = TZInfo::DataSource.get.get_leap_second_table('right/Europe/London')
+time = TZInfo::LeapTimestamp.utc(table, 2016, 12, 31, 23, 59, 60)
+time.kind             # => :leap_second
+time.continuous_second # => position on the continuous second axis
+```
+
+Conversions at an inserted leap second preserve `23:59:60`. A second removed
+by a negative leap second, and times beyond a table's known range, raise
+`TZInfo::LeapSecondOutOfRangeError` rather than returning an invented or
+predicted result.
+
 
 ## Installation
 

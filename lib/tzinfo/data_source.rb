@@ -118,12 +118,13 @@ module TZInfo
       # zoneinfo directory instead (using the search path specified by
       # {DataSources::ZoneinfoDataSource.search_path}).
       #
-      # @param data_source_or_type [Object] either `:ruby`, `:zoneinfo` or an
+      # @param data_source_or_type [Object] either `:ruby`, `:zoneinfo`,
+      #   `:leap_aware_zoneinfo` or an
       #   instance of a {DataSource}.
       # @param args [Array<Object>] when `data_source_or_type` is a symbol,
       #   optional arguments to use when initializing the data source.
-      # @raise [ArgumentError] if `data_source_or_type` is not `:ruby`,
-      #   `:zoneinfo` or an instance of {DataSource}.
+      # @raise [ArgumentError] if `data_source_or_type` is not a recognized
+      #   symbol or an instance of {DataSource}.
       def set(data_source_or_type, *args)
         if data_source_or_type.kind_of?(DataSource)
           @@instance = data_source_or_type
@@ -131,8 +132,10 @@ module TZInfo
           @@instance = DataSources::RubyDataSource.new
         elsif data_source_or_type == :zoneinfo
           @@instance = DataSources::ZoneinfoDataSource.new(*args)
+        elsif data_source_or_type == :leap_aware_zoneinfo || data_source_or_type == :leap_zoneinfo
+          @@instance = DataSources::LeapAwareZoneinfoDataSource.new(*args)
         else
-          raise ArgumentError, 'data_source_or_type must be a DataSource instance or a data source type (:ruby or :zoneinfo)'
+          raise ArgumentError, 'data_source_or_type must be a DataSource instance or a data source type (:ruby, :zoneinfo or :leap_aware_zoneinfo)'
         end
       end
 

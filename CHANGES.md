@@ -1,5 +1,14 @@
 # Changes
 
+## Unreleased
+
+* Added an independently opted-in leap-aware zoneinfo data source and
+  timestamp representation. TZif v4 leap second tables can now be read with
+  `:leap_aware_zoneinfo`, preserving inserted positive leap seconds, rejecting
+  removed negative leap seconds and reporting times beyond the known table
+  range as errors. Ordinary `Time` and `DateTime` conversions retain POSIX
+  semantics.
+
 ## Version 2.0.6 - 28-Jan-2023
 
 * Eliminate `Object#untaint` deprecation warnings on JRuby 9.4.0.0. #145.

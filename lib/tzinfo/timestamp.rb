@@ -16,6 +16,27 @@ module TZInfo
     JD_EPOCH = 2440588
     private_constant :JD_EPOCH
 
+    # @private
+    def self.civil_fields_for_value(value)
+      days, second = value.divmod(86400)
+      hour, second = second.divmod(3600)
+      minute, second = second.divmod(60)
+
+      # Inverse of the days-from-civil algorithm used by {Timestamp.create}.
+      z = days + 719468
+      era = (z >= 0 ? z : z - 146096) / 146097
+      doe = z - era * 146097
+      yoe = (doe - doe / 1460 + doe / 36524 - doe / 146096) / 365
+      y = yoe + era * 400
+      doy = doe - (365 * yoe + yoe / 4 - yoe / 100)
+      mp = (5 * doy + 2) / 153
+      day = doy - (153 * mp + 2) / 5 + 1
+      month = mp + (mp < 10 ? 3 : -9)
+      year = y + (month <= 2 ? 1 : 0)
+
+      {year: year, month: month, day: day, hour: hour, minute: minute, second: second}
+    end
+
     class << self
       # Returns a new {Timestamp} representing the (proleptic Gregorian
       # calendar) date and time specified by the supplied parameters.

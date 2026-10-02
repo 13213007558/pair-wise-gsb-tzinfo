@@ -47,10 +47,15 @@ require_relative 'tzinfo/data_sources/country_info'
 
 require_relative 'tzinfo/data_sources/posix_time_zone_parser'
 require_relative 'tzinfo/data_sources/zoneinfo_reader'
+require_relative 'tzinfo/leap_second_error'
+require_relative 'tzinfo/leap_second'
+require_relative 'tzinfo/leap_second_table'
+require_relative 'tzinfo/leap_timestamp'
 
 require_relative 'tzinfo/data_source'
 require_relative 'tzinfo/data_sources/ruby_data_source'
 require_relative 'tzinfo/data_sources/zoneinfo_data_source'
+require_relative 'tzinfo/data_sources/leap_aware_zoneinfo_data_source'
 
 require_relative 'tzinfo/timezone_period'
 require_relative 'tzinfo/offset_timezone_period'

@@ -348,14 +348,20 @@ class TCDataSource < Minitest::Test
     assert_kind_of(InitDataSource, DataSource.get)
   end
 
+  def test_set_standard_leap_aware_zoneinfo_explicit
+    dir = File.join(TESTS_DIR, 'zoneinfo')
+    DataSource.set(:leap_aware_zoneinfo, dir)
+    assert_kind_of(DataSources::LeapAwareZoneinfoDataSource, DataSource.get)
+  end
+
   def test_set_invalid_datasource_type
     error = assert_raises(ArgumentError) { DataSource.set(:other) }
-    assert_equal('data_source_or_type must be a DataSource instance or a data source type (:ruby or :zoneinfo)', error.message)
+    assert_equal('data_source_or_type must be a DataSource instance or a data source type (:ruby, :zoneinfo or :leap_aware_zoneinfo)', error.message)
   end
 
   def test_set_not_a_datasource
     error = assert_raises(ArgumentError) { DataSource.set(Object.new) }
-    assert_equal('data_source_or_type must be a DataSource instance or a data source type (:ruby or :zoneinfo)', error.message)
+    assert_equal('data_source_or_type must be a DataSource instance or a data source type (:ruby, :zoneinfo or :leap_aware_zoneinfo)', error.message)
   end
 
   def test_get_timezone_info

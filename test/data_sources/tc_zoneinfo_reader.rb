@@ -373,7 +373,7 @@ module DataSources
     def test_read_invalid_version
       offsets = [{gmtoff: -12094, isdst: false, abbrev: 'LT'}]
 
-      tzif_test(offsets, [], magic: 'TZif4') do |path, format|
+      tzif_test(offsets, [], magic: 'TZif5') do |path, format|
         error = assert_raises(InvalidZoneinfoFile) { @reader.read(path) }
         assert_equal("The file '#{path}' contains a version of the zoneinfo format that is not currently supported.", error.message)
       end

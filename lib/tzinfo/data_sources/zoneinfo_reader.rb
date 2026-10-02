@@ -42,6 +42,17 @@ module TZInfo
         File.open(file_path, 'rb') { |file| parse(file) }
       end
 
+      # Reads the leap second table from a compiled TZif version 2, 3 or 4
+      # file. Unlike {#read}, leap second records are retained and interpreted.
+      #
+      # @param file_path [String] the path of a zoneinfo file.
+      # @return [LeapSecondTable] the leap second table contained in the file.
+      # @raise [InvalidZoneinfoFile] if the file is not a valid TZif file with
+      #   an explicit leap second table.
+      def read_leap_seconds(file_path)
+        File.open(file_path, 'rb') { |file| parse_leap_seconds(file) }
+      end
+
       private
 
       # Translates an unsigned 32-bit integer (as returned by unpack) to signed
@@ -348,7 +359,7 @@ module TZInfo
           raise InvalidZoneinfoFile, "The file '#{file.path}' does not start with the expected header."
         end
 
-        if version == '2' || version == '3'
+        if version == '2' || version == '3' || version == '4'
           # Skip the first 32-bit section and read the header of the second 64-bit section
           file.seek(timecnt * 5 + typecnt * 6 + charcnt + leapcnt * 8 + ttisstdcnt + ttisutccnt, IO::SEEK_CUR)
 
@@ -362,7 +373,7 @@ module TZInfo
           end
 
           using_64bit = true
-        elsif version != '3' && version != '2' && version != "\0"
+        elsif version != '4' && version != '3' && version != '2' && version != "\0"
           raise InvalidZoneinfoFile, "The file '#{file.path}' contains a version of the zoneinfo format that is not currently supported."
         else
           using_64bit = false
@@ -474,6 +485,112 @@ module TZInfo
 
           apply_rules_with_transitions(file, transitions, offsets, rules) if rules
           transitions
+        end
+      end
+
+      # Parses the second data block of a TZif file and returns its leap second
+      # table. The first 32-bit block is ignored as required by TZif v2 and
+      # later.
+      #
+      # @param file [IO] the file to be read.
+      # @return [LeapSecondTable] the parsed leap second table.
+      # @raise [InvalidZoneinfoFile] if the file is not valid.
+      def parse_leap_seconds(file)
+        magic, version, ttisutccnt, ttisstdcnt, leapcnt, timecnt, typecnt, charcnt =
+          check_read(file, 44).unpack('a4 a x15 NNNNNN')
+
+        raise InvalidZoneinfoFile, "The file '#{file.path}' does not start with the expected header." unless magic == 'TZif'
+
+        if version == "\0"
+          raise InvalidZoneinfoFile, "The file '#{file.path}' does not contain 64-bit leap second data."
+        end
+
+        unless version == '2' || version == '3' || version == '4'
+          raise InvalidZoneinfoFile, "The file '#{file.path}' contains a version of the zoneinfo format that is not currently supported."
+        end
+
+        previous_version = version
+        first_block_size = timecnt * 5 + typecnt * 6 + charcnt + leapcnt * 8 + ttisstdcnt + ttisutccnt
+        file.seek(first_block_size, IO::SEEK_CUR)
+
+        magic, version, ttisutccnt, ttisstdcnt, leapcnt, timecnt, typecnt, charcnt =
+          check_read(file, 44).unpack('a4 a x15 NNNNNN')
+
+        unless magic == 'TZif' && version == previous_version
+          raise InvalidZoneinfoFile, "The file '#{file.path}' contains an invalid 64-bit section header."
+        end
+
+        if leapcnt == 0
+          raise InvalidZoneinfoFile, "The file '#{file.path}' does not contain an explicit leap second table."
+        end
+
+        unless ttisstdcnt == 0 || ttisstdcnt == typecnt
+          raise InvalidZoneinfoFile, "The file '#{file.path}' contains an invalid number of standard/wall indicators."
+        end
+
+        unless ttisutccnt == 0 || ttisutccnt == typecnt
+          raise InvalidZoneinfoFile, "The file '#{file.path}' contains an invalid number of UT/local indicators."
+        end
+
+        file.seek(timecnt * 8 + timecnt + typecnt * 6 + charcnt, IO::SEEK_CUR)
+
+        raw_leaps = leapcnt.times.map do
+          high, low, correction = check_read(file, 12).unpack('NNN')
+          at = make_signed_int64(high, low)
+          correction = make_signed_int32(correction)
+          [at, correction]
+        end
+
+        records = build_leap_second_records(raw_leaps, version, file.path)
+
+        begin
+          LeapSecondTable.new(records)
+        rescue LeapSecondError => e
+          raise InvalidZoneinfoFile, "Invalid leap second table in file '#{file.path}': #{e.message}"
+        end
+      end
+
+      # Builds public leap second and boundary records from raw TZif pairs.
+      #
+      # @param raw_leaps [Array<Array(Integer, Integer)>)] continuous times and
+      #   signed cumulative corrections.
+      # @param version [String] the TZif version.
+      # @param path [String] the file path used in error messages.
+      # @return [Array<LeapSecond>] the constructed records.
+      def build_leap_second_records(raw_leaps, version, path)
+        expiration_index = if raw_leaps.length == 1
+          version == '4' && raw_leaps[0][1] == 0 ? 0 : nil
+        elsif raw_leaps[-1][1] == raw_leaps[-2][1]
+          raw_leaps.length - 1
+        end
+
+        start_truncated = version == '4' && ![-1, 1].include?(raw_leaps[0][1]) && expiration_index != 0
+
+        if version != '4' && expiration_index
+          raise InvalidZoneinfoFile, "Leap second expiration records are only supported in TZif version 4 files (file '#{path}')."
+        end
+
+        if version != '4' && ![-1, 1].include?(raw_leaps[0][1])
+          raise InvalidZoneinfoFile, "Truncated leap second tables are only supported in TZif version 4 files (file '#{path}')."
+        end
+
+        raw_leaps.each_with_index.map do |(at, correction), index|
+          if at < 0
+            raise InvalidZoneinfoFile, "Leap second times must be non-negative in file '#{path}'."
+          end
+
+          if index == 0 && start_truncated
+            LeapSecond.new!(at, correction, correction, true, false)
+          elsif index == expiration_index
+            LeapSecond.new!(at, correction, correction, false, true)
+          else
+            previous_correction = if index == 0
+              correction > 0 ? correction - 1 : correction + 1
+            else
+              raw_leaps[index - 1][1]
+            end
+            LeapSecond.new!(at, correction, previous_correction, false, false)
+          end
         end
       end
     end
