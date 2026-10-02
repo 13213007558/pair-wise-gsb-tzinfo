@@ -1,5 +1,15 @@
 # Changes
 
+## Unreleased
+
+### Added
+
+* Added `TZInfo::OfflineTimezoneIdentifier` for matching caller-supplied time
+  zones against historical UTC/local observations. Results retain aliases,
+  group indistinguishable zones, support local-time tolerance and hint or
+  strict abbreviation matching, and report a minimal incompatible subset of
+  observations when no candidate matches.
+
 ## Version 2.0.6 - 28-Jan-2023
 
 * Eliminate `Object#untaint` deprecation warnings on JRuby 9.4.0.0. #145.

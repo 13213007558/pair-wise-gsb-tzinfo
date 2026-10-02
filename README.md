@@ -325,6 +325,82 @@ For further detail, please refer to the API documentation for the
 `TZInfo::Timezone` and `TZInfo::Country` classes.
 
 
+## Offline Time Zone Identification
+
+`TZInfo::OfflineTimezoneIdentifier` narrows down a set of time zones from logs
+containing UTC times, local wall-clock times and optional abbreviations. It
+does not guess a single city or consult an implicit data source. The candidate
+`TZInfo::Timezone` objects are supplied by the caller.
+
+Each observation is matched against the period in effect at the recorded UTC
+instant, so historical offsets and abbreviations are used rather than the
+current rules for the zone. The UTC offset attached to the local time object
+is ignored; only its displayed date and time of day is used.
+
+```ruby
+allowed = ['Europe/Brussels', 'Europe/Paris', 'Europe/Prague'].map do |identifier|
+  TZInfo::Timezone.get(identifier)
+end
+
+observations = [
+  TZInfo::TimezoneObservation.new(
+    Time.utc(1946, 7, 1, 12),
+    Time.utc(1946, 7, 1, 13),
+    'CET'
+  )
+]
+
+identifier = TZInfo::OfflineTimezoneIdentifier.new(allowed)
+result = identifier.identify(observations, TZInfo::OfflineTimezoneIdentifier::HINT)
+
+result.found?
+# => true
+result.candidate_groups.map(&:canonical_identifiers)
+# => [["Europe/Paris"]]
+```
+
+In hint mode, abbreviations are counted for ordering but never exclude a
+candidate. Pass `TZInfo::OfflineTimezoneIdentifier::STRICT` to require every
+recorded abbreviation to match. Observations without abbreviations remain
+unconstrained.
+
+The third parameter of `identify` is a default local-time tolerance in
+seconds. Each observation can also specify its own tolerance:
+
+```ruby
+observation = TZInfo::TimezoneObservation.new(
+  Time.utc(2024, 1, 1, 12),
+  Time.utc(2024, 1, 1, 13, 0, 1),
+  nil,
+  1
+)
+```
+
+Time zones that cannot be distinguished by the observations are returned
+together in one `TZInfo::TimezoneCandidateGroup`. Aliases supplied by the
+caller are retained and the group provides their relationship to canonical
+identifiers:
+
+```ruby
+group.canonical_identifiers
+# => ["Europe/Brussels", "Europe/Paris", "Europe/Prague"]
+group.aliases
+# => {"Test/Paris_Alias" => "Europe/Paris"}
+```
+
+When no candidate matches, the result contains a minimal subset of
+observations that are mutually incompatible:
+
+```ruby
+result.found?
+# => false
+result.incompatible_observation_indices
+# => [0, 2]
+result.incompatible_observations
+# => [#<TZInfo::TimezoneObservation ...>, ...]
+```
+
+
 ## Time Zone Selection
 
 The Time Zone Database maintainers recommend that time zone identifiers are not
