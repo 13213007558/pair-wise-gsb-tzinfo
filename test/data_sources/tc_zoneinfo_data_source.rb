@@ -379,8 +379,20 @@ module DataSources
 
     def test_load_timezone_info_data
       info = @data_source.send(:load_timezone_info, 'Europe/London')
-      assert_kind_of(TransitionsDataTimezoneInfo, info)
+      assert_kind_of(DataSources.const_get(:AnnualRulesDataTimezoneInfo), info)
       assert_equal('Europe/London', info.identifier)
+    end
+
+    def test_load_timezone_info_annual_rules_responds_for_far_future
+      info = @data_source.send(:load_timezone_info, 'Europe/London')
+      assert_kind_of(DataSources.const_get(:AnnualRulesDataTimezoneInfo), info)
+
+      period = info.period_for(Timestamp.create(3000, 7, 1, 12, 0, 0, 0, :utc))
+      assert_equal('BST', period.abbreviation)
+      assert_equal(true, period.dst?)
+
+      period = info.period_for(Timestamp.create(3000, 1, 1, 12, 0, 0, 0, :utc))
+      assert_equal('GMT', period.abbreviation)
     end
 
     def test_load_timezone_info_linked

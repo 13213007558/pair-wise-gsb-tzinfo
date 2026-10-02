@@ -35,6 +35,7 @@ require_relative 'tzinfo/timezone_offset'
 require_relative 'tzinfo/timezone_transition'
 require_relative 'tzinfo/transition_rule'
 require_relative 'tzinfo/annual_rules'
+require_relative 'tzinfo/annual_rules_timeline'
 
 require_relative 'tzinfo/data_sources'
 require_relative 'tzinfo/data_sources/timezone_info'
@@ -42,6 +43,7 @@ require_relative 'tzinfo/data_sources/data_timezone_info'
 require_relative 'tzinfo/data_sources/linked_timezone_info'
 require_relative 'tzinfo/data_sources/constant_offset_data_timezone_info'
 require_relative 'tzinfo/data_sources/transitions_data_timezone_info'
+require_relative 'tzinfo/data_sources/annual_rules_data_timezone_info'
 
 require_relative 'tzinfo/data_sources/country_info'
 

@@ -1,5 +1,21 @@
 # Changes
 
+## Unreleased
+
+* Time zone data loaded from zoneinfo files with a POSIX-style TZ string is no
+  longer limited to queries up to 100 years after the current year. The annual
+  rules defined by the TZ string are now evaluated on demand, joining the
+  finite history of transitions to an indefinitely repeating future timeline.
+  period_for, periods_for_local (and therefore local_to_utc) and
+  transitions_up_to now return correct results for arbitrarily distant years.
+  Rule transitions are generated only for the years needed to answer a query,
+  with a bounded per-time-zone cache, so memory use does not grow with the
+  furthest year queried. Southern hemisphere rules that cross the calendar
+  year and rule times before 00:00 or after 24:00 are handled correctly, as is
+  a final defined transition coinciding with a footer rule transition.
+  Zoneinfo files without a POSIX-style TZ string retain their previous
+  behavior (the last defined offset continues indefinitely).
+
 ## Version 2.0.6 - 28-Jan-2023
 
 * Eliminate `Object#untaint` deprecation warnings on JRuby 9.4.0.0. #145.

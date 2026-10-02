@@ -61,10 +61,14 @@ module TZInfo
     # file. If it returns `"TZif2"` or `"TZif3"` then you have a 64-bit zoneinfo
     # file.
     #
-    # It is also worth noting that as of the 2017c release of the IANA Time Zone
-    # Database, 64-bit zoneinfo files only include future transitions up to
-    # 2038-01-19 03:14:07. Any queries falling after this time may be
-    # inaccurate.
+    # 64-bit zoneinfo files typically only include explicitly defined future
+    # transitions up to a short time after the release of the IANA Time Zone
+    # Database (for example 2038-01-19 03:14:07 in the 2017c release). Queries
+    # after the final defined transition are resolved using the annually
+    # repeating rules in the file's POSIX-style TZ string footer, so they
+    # continue to return results for arbitrarily distant years (assuming the
+    # rules continue to apply). Zoneinfo files without a TZ string footer
+    # continue to observe the final defined offset indefinitely.
     class ZoneinfoDataSource < DataSource
       # The default value of {ZoneinfoDataSource.search_path}.
       DEFAULT_SEARCH_PATH = ['/usr/share/zoneinfo', '/usr/share/lib/zoneinfo', '/etc/zoneinfo'].freeze
@@ -294,8 +298,10 @@ module TZInfo
       protected
 
       # Returns a {TimezoneInfo} instance for the given time zone identifier.
-      # The result will either be a {ConstantOffsetDataTimezoneInfo} or a
-      # {TransitionsDataTimezoneInfo}.
+      # The result will be a {ConstantOffsetDataTimezoneInfo}, a
+      # {TransitionsDataTimezoneInfo} (for finite data) or an
+      # {AnnualRulesDataTimezoneInfo} (for a finite history joined to annually
+      # repeating rules from a POSIX-style TZ string).
       #
       # @param identifier [String] A time zone identifier.
       # @return [TimezoneInfo] a {TimezoneInfo} instance for the given time zone
@@ -317,6 +323,8 @@ module TZInfo
 
         if zoneinfo.kind_of?(TimezoneOffset)
           ConstantOffsetDataTimezoneInfo.new(valid_identifier, zoneinfo)
+        elsif zoneinfo.kind_of?(AnnualRulesTimeline)
+          AnnualRulesDataTimezoneInfo.new(valid_identifier, zoneinfo)
         else
           TransitionsDataTimezoneInfo.new(valid_identifier, zoneinfo)
         end

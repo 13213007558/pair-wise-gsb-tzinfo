@@ -10,12 +10,6 @@ module TZInfo
 
     # Reads compiled zoneinfo TZif (\0, 2 or 3) files.
     class ZoneinfoReader #:nodoc:
-      # The year to generate transitions up to.
-      #
-      # @private
-      GENERATE_UP_TO = Time.now.utc.year + 100
-      private_constant :GENERATE_UP_TO
-
       # Initializes a new {ZoneinfoReader}.
       #
       # @param posix_tz_parser [PosixTimeZoneParser] a {PosixTimeZoneParser}
@@ -28,12 +22,14 @@ module TZInfo
       end
 
       # Reads a zoneinfo structure from the given path. Returns either a
-      # {TimezoneOffset} that is constantly observed or an `Array`
-      # {TimezoneTransition}s.
+      # {TimezoneOffset} that is constantly observed, an Array of
+      # {TimezoneTransition}s (for files without a POSIX-style TZ string) or an
+      # {AnnualRulesTimeline} (when a POSIX-style TZ string defines annual
+      # rules).
       #
       # @param file_path [String] the path of a zoneinfo file.
-      # @return [Object] either a {TimezoneOffset} or an `Array` of
-      #   {TimezoneTransition}s.
+      # @return [Object] a {TimezoneOffset}, an Array of
+      #   {TimezoneTransition}s or an {AnnualRulesTimeline}.
       # @raise [SecurityError] if safe mode is enabled and `file_path` is
       #   tainted.
       # @raise [InvalidZoneinfoFile] if `file_path`` does not refer to a valid
@@ -182,18 +178,18 @@ module TZInfo
           offset.abbreviation == rule_offset.abbreviation
       end
 
-      # Apply the rules from the TZ string when there were no defined
+      # Applies the rules from the TZ string when there were no defined
       # transitions. Checks for a matching offset. Returns the rules-based
-      # constant offset or generates transitions from 1970 until 100 years into
-      # the future (at the time of loading zoneinfo_reader.rb).
+      # constant offset, or an AnnualRulesTimeline that generates annual
+      # transitions on demand (starting from 1970).
       #
       # @param file [IO] the file being processed.
       # @param first_offset [TimezoneOffset] the first offset included in the
       #   file that would normally apply without the rules.
-      # @param rules [Object] a {TimezoneOffset} specifying a constant offset or
-      #   {AnnualRules} instance specfying transitions.
-      # @return [Object] either a {TimezoneOffset} or an `Array` of
-      #   {TimezoneTransition}s.
+      # @param rules [Object] a {TimezoneOffset} specifying a constant offset
+      #   or an {AnnualRules} instance specifying transitions.
+      # @return [Object] either a {TimezoneOffset} or an
+      #   {AnnualRulesTimeline}.
       # @raise [InvalidZoneinfoFile] if the first offset does not match the
       #   rules.
       def apply_rules_without_transitions(file, first_offset, rules)
@@ -203,23 +199,21 @@ module TZInfo
           end
           rules
         else
-          transitions = 1970.upto(GENERATE_UP_TO).flat_map {|y| rules.transitions(y) }
+          transitions = rules.transitions(1970)
           first_transition = transitions[0]
 
-          unless offset_matches_rule?(first_offset, first_transition.previous_offset)
-            # Not transitioning from the designated first offset.
-
-            if offset_matches_rule?(first_offset, first_transition.offset)
-              # Skip an unnecessary transition to the first offset.
-              transitions.shift
-            else
-              # The initial offset doesn't match the ongoing rules. Replace the
-              # previous offset of the first transition.
-              transitions[0] = TimezoneTransition.new(first_transition.offset, first_offset, first_transition.timestamp_value)
-            end
+          if offset_matches_rule?(first_offset, first_transition.previous_offset)
+            # Transitioning from the designated first offset.
+          elsif offset_matches_rule?(first_offset, first_transition.offset)
+            # Skip an unnecessary transition to the first offset.
+            transitions = transitions.drop(1)
+          else
+            # The initial offset does not match the ongoing rules. Replace the
+            # previous offset of the first transition.
+            transitions[0] = TimezoneTransition.new(first_transition.offset, first_offset, first_transition.timestamp_value)
           end
 
-          transitions
+          AnnualRulesTimeline.new(transitions, rules, 1970, transitions[0].timestamp_value - 1)
         end
       end
 
@@ -291,18 +285,21 @@ module TZInfo
         end
       end
 
-      # Apply the rules from the TZ string when there were defined
-      # transitions. Checks for a matching offset with the last transition.
-      # Redefines the last transition if required and if the rules don't
-      # specific a constant offset, generates transitions until 100 years into
-      # the future (at the time of loading zoneinfo_reader.rb).
+      # Applies the rules from the TZ string when there were defined
+      # transitions. For a constant offset, checks for a matching offset with
+      # the last transition, redefining it if required. For annual rules,
+      # returns an AnnualRulesTimeline joining the finite history to the rules
+      # and validates that the rules take over from the last defined
+      # transition.
       #
       # @param file [IO] the file being processed.
       # @param transitions [Array<TimezoneTransition>] the defined transitions.
       # @param offsets [Array<TimezoneOffset>] the offsets used by the defined
       #   transitions.
-      # @param rules [Object] a {TimezoneOffset} specifying a constant offset or
-      #   {AnnualRules} instance specfying transitions.
+      # @param rules [Object] a {TimezoneOffset} specifying a constant offset
+      #   or an {AnnualRules} instance specifying transitions.
+      # @return [Object, nil] nil for constant offset rules (the last defined
+      #   transition is corrected in place) or an {AnnualRulesTimeline}.
       # @raise [InvalidZoneinfoFile] if the first offset does not match the
       #   rules.
       # @raise [InvalidZoneinfoFile] if the previous offset of the first
@@ -313,24 +310,55 @@ module TZInfo
 
         if rules.kind_of?(TimezoneOffset)
           transitions[-1] = validate_and_fix_last_defined_transition_offset(file, last_defined, rules)
+          nil
         else
+          rules = replace_with_existing_offsets(offsets, rules)
           last_year = last_defined.local_end_at.to_time.year
+          last_value = last_defined.timestamp_value
 
-          if last_year <= GENERATE_UP_TO
-            rules = replace_with_existing_offsets(offsets, rules)
+          # The first rule transition that extends the finite history
+          # determines which offset the rules indicate is in force prior to
+          # it. Transitions in the final year that merely retain the last
+          # defined offset are ignored (matching the original generation
+          # behavior); otherwise the first transition of the following year
+          # is used for validation.
+          first_extending = first_extending_rule_transition(rules, last_year, last_value, last_defined.offset)
 
-            generated = rules.transitions(last_year).find_all do |t|
-              t.timestamp_value > last_defined.timestamp_value && !offset_matches_rule?(last_defined.offset, t.offset)
-            end
-
-            generated += (last_year + 1).upto(GENERATE_UP_TO).flat_map {|y| rules.transitions(y) }
-
-            unless generated.empty?
-              transitions[-1] = validate_and_fix_last_defined_transition_offset(file, last_defined, generated[0].previous_offset)
-              transitions.concat(generated)
-            end
+          if first_extending
+            transitions[-1] = validate_and_fix_last_defined_transition_offset(file, last_defined, first_extending.previous_offset)
           end
+
+          AnnualRulesTimeline.new(transitions, rules, last_year, last_value)
         end
+      end
+
+      # Finds the first annually generated transition that extends the finite
+      # history. Transitions in the year of the final defined transition that
+      # merely retain its observed offset are ignored (they represent changes
+      # already captured by the finite history). If no transition in that year
+      # extends the history, the first transition of the following year is
+      # used. AnnualRules#transitions orders transitions within a year,
+      # including southern hemisphere rules that cross the calendar year
+      # boundary.
+      #
+      # @param rules [AnnualRules] the annual rules.
+      # @param last_year [Integer] the local calendar year of the final
+      #   defined transition.
+      # @param last_value [Integer] the UTC timestamp value of the final
+      #   defined transition.
+      # @param seam_offset [TimezoneOffset] the offset observed after the final
+      #   defined transition.
+      # @return [TimezoneTransition, nil] the first extending rule transition
+      #   or nil if the rules do not extend the history in the final year.
+      def first_extending_rule_transition(rules, last_year, last_value, seam_offset)
+        same_year = rules.transitions(last_year).find_all do |t|
+          t.timestamp_value > last_value && !offset_matches_rule?(seam_offset, t.offset)
+        end
+
+        return same_year.first unless same_year.empty?
+
+        following_year = rules.transitions(last_year + 1)
+        following_year.first if following_year.first && following_year.first.timestamp_value > last_value
       end
 
       # Parses a zoneinfo file and returns either a {TimezoneOffset} that is
@@ -472,8 +500,12 @@ module TZInfo
             tt
           end
 
-          apply_rules_with_transitions(file, transitions, offsets, rules) if rules
-          transitions
+          if rules
+            timeline = apply_rules_with_transitions(file, transitions, offsets, rules)
+            timeline || transitions
+          else
+            transitions
+          end
         end
       end
     end
