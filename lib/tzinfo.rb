@@ -25,6 +25,7 @@ require_relative 'tzinfo/version'
 require_relative 'tzinfo/string_deduper'
 
 require_relative 'tzinfo/timestamp'
+require_relative 'tzinfo/local_time_sequence_resolution'
 
 require_relative 'tzinfo/with_offset'
 require_relative 'tzinfo/datetime_with_offset'

@@ -142,6 +142,33 @@ module TZInfo
         TimezoneProxy.new(identifier)
       end
 
+      # Resolves a sequence of local wall-clock times for the given time zone.
+      #
+      # Each ambiguous local time is considered in the context of the complete
+      # sequence rather than being globally assigned to either the first or
+      # second occurrence. Invalid local times (the gap when clocks move
+      # forward) remain invalid.
+      #
+      # @param timezone [Object] either a {Timezone} or a time zone identifier.
+      # @param local_times [Enumerable<Object>] local `Time`, `DateTime` or
+      #   {Timestamp} instances in record order. UTC offsets are ignored.
+      # @param min_interval [Numeric] the minimum allowed interval between
+      #   adjacent real UTC times, in seconds.
+      # @param max_interval [Numeric] the maximum allowed interval between
+      #   adjacent real UTC times, in seconds.
+      # @param options [Hash] options for the resolution.
+      # @option options [Symbol] :order either `:non_decreasing` or `:strict`.
+      #   This option must be supplied explicitly.
+      # @return [LocalTimeSequenceResolution] the feasible UTC time or times for
+      #   each record.
+      # @raise [ArgumentError] if an option or local time is invalid.
+      # @raise [InvalidLocalTimeSequence] if no UTC assignment can satisfy the
+      #   complete sequence.
+      def disambiguate_local_sequence(timezone, local_times, min_interval, max_interval, options = {})
+        timezone = get(timezone) unless timezone.kind_of?(Timezone)
+        timezone.disambiguate_local_sequence(local_times, min_interval, max_interval, options)
+      end
+
       # Returns an `Array` of all the available time zones.
       #
       # {TimezoneProxy} instances are returned to avoid the overhead of loading
@@ -341,6 +368,47 @@ module TZInfo
     # @raise [ArgumentError] if `local_time` is `nil`.
     def periods_for_local(local_time)
       raise_unknown_timezone
+    end
+
+    # Resolves a sequence of local wall-clock times for this time zone.
+    #
+    # Each ambiguous local time is considered in the context of the complete
+    # sequence rather than being globally assigned to either the first or
+    # second occurrence. Invalid local times (the gap when clocks move forward)
+    # remain invalid. The algorithm stores reachability for each local
+    # candidate, but does not enumerate or store all candidate combinations.
+    #
+    # Interval bounds are inclusive and measured in real UTC seconds. The
+    # `:order` option must be supplied as either `:non_decreasing` or
+    # `:strict`.
+    #
+    # @param local_times [Enumerable<Object>] local `Time`, `DateTime` or
+    #   {Timestamp} instances in record order. UTC offsets are ignored.
+    # @param min_interval [Numeric] the minimum allowed interval between
+    #   adjacent real UTC times, in seconds.
+    # @param max_interval [Numeric] the maximum allowed interval between
+    #   adjacent real UTC times, in seconds.
+    # @param options [Hash] options for the resolution.
+    # @option options [Symbol] :order either `:non_decreasing` or `:strict`.
+    #   This option must be supplied explicitly.
+    # @return [LocalTimeSequenceResolution] the feasible UTC time or times for
+    #   each record.
+    # @raise [ArgumentError] if an option or local time is invalid.
+    # @raise [InvalidLocalTimeSequence] if no UTC assignment can satisfy the
+    #   complete sequence.
+    def disambiguate_local_sequence(local_times, min_interval, max_interval, options = {})
+      raise ArgumentError, 'local_times must be specified' unless local_times
+      raise ArgumentError, 'min_interval must be a Numeric' unless min_interval.kind_of?(Numeric)
+      raise ArgumentError, 'max_interval must be a Numeric' unless max_interval.kind_of?(Numeric)
+      raise ArgumentError, 'min_interval must be greater than or equal to 0' if min_interval < 0
+      raise ArgumentError, 'min_interval must be less than or equal to max_interval' if min_interval > max_interval
+
+      order = options[:order]
+      unless order == :non_decreasing || order == :strict
+        raise ArgumentError, 'order must be :non_decreasing or :strict'
+      end
+
+      LocalTimeSequenceResolver.new(self, local_times, min_interval, max_interval, order).resolve
     end
 
     # Returns an `Array` of {TimezoneTransition} instances representing the
