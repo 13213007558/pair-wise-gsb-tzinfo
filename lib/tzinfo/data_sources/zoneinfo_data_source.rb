@@ -317,6 +317,9 @@ module TZInfo
 
         if zoneinfo.kind_of?(TimezoneOffset)
           ConstantOffsetDataTimezoneInfo.new(valid_identifier, zoneinfo)
+        elsif zoneinfo.respond_to?(:annual_rules)
+          TransitionsDataTimezoneInfo.new(valid_identifier, zoneinfo, zoneinfo.annual_rules,
+            zoneinfo.annual_rules_start_year)
         else
           TransitionsDataTimezoneInfo.new(valid_identifier, zoneinfo)
         end

@@ -10,11 +10,31 @@ module TZInfo
 
     # Reads compiled zoneinfo TZif (\0, 2 or 3) files.
     class ZoneinfoReader #:nodoc:
-      # The year to generate transitions up to.
-      #
-      # @private
-      GENERATE_UP_TO = Time.now.utc.year + 100
-      private_constant :GENERATE_UP_TO
+      # An `Array` of transitions that also includes the annual rules from a
+      # POSIX-style TZ string for generating subsequent transitions.
+      class AnnualRuleTransitions < Array
+        # @return [AnnualRules] the annual rules to apply after the transitions.
+        attr_reader :annual_rules
+
+        # @return [Integer] the first year for which transitions should be
+        #   generated from {#annual_rules}.
+        attr_reader :annual_rules_start_year
+
+        # Initializes a new {AnnualRuleTransitions}.
+        #
+        # @param transitions [Array<TimezoneTransition>] the defined and
+        #   transitional generated transitions.
+        # @param annual_rules [AnnualRules] the annual rules to apply afterward.
+        # @param annual_rules_start_year [Integer] the first year for which
+        #   transitions should be generated from `annual_rules`.
+        def initialize(transitions, annual_rules, annual_rules_start_year)
+          super(transitions)
+          @annual_rules = annual_rules
+          @annual_rules_start_year = annual_rules_start_year
+          freeze
+        end
+      end
+      private_constant :AnnualRuleTransitions
 
       # Initializes a new {ZoneinfoReader}.
       #
@@ -184,8 +204,7 @@ module TZInfo
 
       # Apply the rules from the TZ string when there were no defined
       # transitions. Checks for a matching offset. Returns the rules-based
-      # constant offset or generates transitions from 1970 until 100 years into
-      # the future (at the time of loading zoneinfo_reader.rb).
+      # constant offset or transitions needed to join to the annual rules.
       #
       # @param file [IO] the file being processed.
       # @param first_offset [TimezoneOffset] the first offset included in the
@@ -203,7 +222,7 @@ module TZInfo
           end
           rules
         else
-          transitions = 1970.upto(GENERATE_UP_TO).flat_map {|y| rules.transitions(y) }
+          transitions = rules.transitions(1970)
           first_transition = transitions[0]
 
           unless offset_matches_rule?(first_offset, first_transition.previous_offset)
@@ -219,7 +238,7 @@ module TZInfo
             end
           end
 
-          transitions
+          AnnualRuleTransitions.new(transitions, rules, 1971)
         end
       end
 
@@ -291,11 +310,22 @@ module TZInfo
         end
       end
 
+      def year_for_timestamp_value(value)
+        days = value.div(86400)
+        z = days + 719468
+        era = (z >= 0 ? z : z - 146096).div(146097)
+        doe = z - era * 146097
+        yoe = (doe - doe.div(1460) + doe.div(36524) - doe.div(146096)).div(365)
+        y = yoe + era * 400
+        doy = doe - (365 * yoe + yoe.div(4) - yoe.div(100))
+        mp = (5 * doy + 2).div(153)
+        y + mp.div(10)
+      end
+
       # Apply the rules from the TZ string when there were defined
       # transitions. Checks for a matching offset with the last transition.
-      # Redefines the last transition if required and if the rules don't
-      # specific a constant offset, generates transitions until 100 years into
-      # the future (at the time of loading zoneinfo_reader.rb).
+      # Redefines the last transition if required and returns the annual rules
+      # to use for subsequent lazy transition generation.
       #
       # @param file [IO] the file being processed.
       # @param transitions [Array<TimezoneTransition>] the defined transitions.
@@ -313,23 +343,47 @@ module TZInfo
 
         if rules.kind_of?(TimezoneOffset)
           transitions[-1] = validate_and_fix_last_defined_transition_offset(file, last_defined, rules)
+          transitions
         else
+          matched_rules = replace_with_existing_offsets(offsets, rules)
           last_year = last_defined.local_end_at.to_time.year
 
-          if last_year <= GENERATE_UP_TO
-            rules = replace_with_existing_offsets(offsets, rules)
+          same_year_end = matched_rules.dst_end_rule.at(matched_rules.dst_offset, last_year).value
+          same_year_start = matched_rules.dst_start_rule.at(matched_rules.std_offset, last_year).value
+          same_year_generated_timestamp = if last_defined.offset.dst?
+            same_year_end > last_defined.timestamp_value ? same_year_end : nil
+          else
+            same_year_start > last_defined.timestamp_value ? same_year_start : nil
+          end
 
-            generated = rules.transitions(last_year).find_all do |t|
-              t.timestamp_value > last_defined.timestamp_value && !offset_matches_rule?(last_defined.offset, t.offset)
-            end
-
-            generated += (last_year + 1).upto(GENERATE_UP_TO).flat_map {|y| rules.transitions(y) }
-
-            unless generated.empty?
-              transitions[-1] = validate_and_fix_last_defined_transition_offset(file, last_defined, generated[0].previous_offset)
-              transitions.concat(generated)
+          first_offset_change = matched_rules.transitions(last_year).find do |t|
+            t.timestamp_value > last_defined.timestamp_value && !offset_matches_rule?(last_defined.offset, t.offset)
+          end
+          first_offset_change ||= if last_defined.offset.dst?
+            end_value = matched_rules.dst_end_rule.at(matched_rules.dst_offset, last_year + 1).value
+            end_transition = matched_rules.transitions(last_year + 1).find {|t| t.timestamp_value == end_value }
+            start_value = matched_rules.dst_start_rule.at(matched_rules.std_offset, last_year + 1).value
+            start_transition = matched_rules.transitions(last_year + 1).find {|t| t.timestamp_value == start_value }
+            if end_transition && start_transition
+              end_value < start_value ? end_transition : start_transition
+            else
+              end_transition || start_transition
             end
           end
+          first_generated = if same_year_generated_timestamp
+            matched_rules.transitions(last_year).find {|t| t.timestamp_value == same_year_generated_timestamp }
+          else
+            matched_rules.transitions(last_year + 1).first
+          end
+          first_offset_change ||= matched_rules.transitions(last_year + 1).find do |t|
+            !last_defined.offset.dst? || !t.offset.dst?
+          end
+          annual_rules_start_year = same_year_generated_timestamp ?
+            year_for_timestamp_value(first_generated.timestamp_value) : last_year + 1
+
+          transitions[-1] = validate_and_fix_last_defined_transition_offset(file, last_defined, first_offset_change.previous_offset)
+
+          AnnualRuleTransitions.new(transitions, matched_rules, annual_rules_start_year)
         end
       end
 
@@ -472,8 +526,11 @@ module TZInfo
             tt
           end
 
-          apply_rules_with_transitions(file, transitions, offsets, rules) if rules
-          transitions
+          if rules
+            apply_rules_with_transitions(file, transitions, offsets, rules)
+          else
+            transitions
+          end
         end
       end
     end

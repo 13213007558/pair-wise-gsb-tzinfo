@@ -1499,15 +1499,16 @@ module DataSources
       o0 = TimezoneOffset.new(7200,    0, 'XST')
       o1 = TimezoneOffset.new(7200, 3600, 'XDT')
 
-      t = 1970.upto(ZoneinfoReader.const_get(:GENERATE_UP_TO)).flat_map do |year|
-        [
-          TimezoneTransition.new(o1, o0, Time.new(year,  4, 10, 1, 0, 0,  7200).to_i),
-          TimezoneTransition.new(o0, o1, Time.new(year, 10, 27, 2, 0, 0, 10800).to_i)
-        ]
-      end
+      t = [
+        TimezoneTransition.new(o1, o0, Time.new(1970,  4, 10, 1, 0, 0,  7200).to_i),
+        TimezoneTransition.new(o0, o1, Time.new(1970, 10, 27, 2, 0, 0, 10800).to_i)
+      ]
 
       tzif_test(offsets, [], rules: rules) do |path, format|
-        assert_equal(t, @reader.read(path))
+        result = @reader.read(path)
+        assert_equal(t, result)
+        assert_equal(rules, result.annual_rules)
+        assert_equal(1971, result.annual_rules_start_year)
       end
     end
 
@@ -1525,16 +1526,13 @@ module DataSources
       o1 = TimezoneOffset.new(7200,    0, 'XST')
 
       t0 = TimezoneTransition.new(o1, o0, Time.new(1970, 10, 27, 2, 0, 0, 10800).to_i)
-      tn = 1971.upto(ZoneinfoReader.const_get(:GENERATE_UP_TO)).flat_map do |year|
-        [
-          TimezoneTransition.new(o0, o1, Time.new(year,  4, 10, 1, 0, 0,  7200).to_i),
-          TimezoneTransition.new(o1, o0, Time.new(year, 10, 27, 2, 0, 0, 10800).to_i)
-        ]
-      end
-      t = [t0] + tn
+      t = [t0]
 
       tzif_test(offsets, [], rules: rules) do |path, format|
-        assert_equal(t, @reader.read(path))
+        result = @reader.read(path)
+        assert_equal(t, result)
+        assert_same(rules, result.annual_rules)
+        assert_equal(1971, result.annual_rules_start_year)
       end
     end
 
@@ -1554,16 +1552,13 @@ module DataSources
 
       t0 = TimezoneTransition.new(o2, o0, Time.new(1970,  4, 10, 1, 0, 0,  7200).to_i)
       t1 = TimezoneTransition.new(o1, o2, Time.new(1970, 10, 27, 2, 0, 0, 10800).to_i)
-      tn = 1971.upto(ZoneinfoReader.const_get(:GENERATE_UP_TO)).flat_map do |year|
-        [
-          TimezoneTransition.new(o2, o1, Time.new(year,  4, 10, 1, 0, 0,  7200).to_i),
-          TimezoneTransition.new(o1, o2, Time.new(year, 10, 27, 2, 0, 0, 10800).to_i)
-        ]
-      end
-      t = [t0, t1] + tn
+      t = [t0, t1]
 
       tzif_test(offsets, [], rules: rules) do |path, format|
-        assert_equal(t, @reader.read(path))
+        result = @reader.read(path)
+        assert_equal(t, result)
+        assert_same(rules, result.annual_rules)
+        assert_equal(1971, result.annual_rules_start_year)
       end
     end
 
@@ -1581,16 +1576,13 @@ module DataSources
       o1 = TimezoneOffset.new(3600,    0, 'XST')
 
       t0 = TimezoneTransition.new(o1, o0, Time.new(1970, 10, 27, 2, 0, 0, 10800).to_i)
-      tn = 1971.upto(ZoneinfoReader.const_get(:GENERATE_UP_TO)).flat_map do |year|
-        [
-          TimezoneTransition.new(o0, o1, Time.new(year,  4, 10, 1, 0, 0,  3600).to_i),
-          TimezoneTransition.new(o1, o0, Time.new(year, 10, 27, 2, 0, 0, 10800).to_i)
-        ]
-      end
-      t = [t0] + tn
+      t = [t0]
 
       tzif_test(offsets, [], rules: rules) do |path, format|
-        assert_equal(t, @reader.read(path))
+        result = @reader.read(path)
+        assert_equal(t, result)
+        assert_same(rules, result.annual_rules)
+        assert_equal(1971, result.annual_rules_start_year)
       end
     end
 
@@ -1619,16 +1611,14 @@ module DataSources
       o2 = TimezoneOffset.new(7200, 3600, 'XDT')
 
       t0 = TimezoneTransition.new(o1, o0, Time.new(1971, 1, 2, 2, 0, 0, 7142).to_i)
-      tn = 1981.upto(ZoneinfoReader.const_get(:GENERATE_UP_TO)).flat_map do |year|
-        [
-          TimezoneTransition.new(o2, o1, Time.new(year,  4, 10, 1, 0, 0,  7200).to_i),
-          TimezoneTransition.new(o1, o2, Time.new(year, 10, 27, 2, 0, 0, 10800).to_i)
-        ]
-      end
-      t = [t0] + tn
+      t1 = TimezoneTransition.new(o2, o1, Time.new(1981,  4, 10, 1, 0, 0,  7200).to_i)
+      t2 = TimezoneTransition.new(o1, o2, Time.new(1981, 10, 27, 2, 0, 0, 10800).to_i)
+      t = [t0, t1, t2]
 
       tzif_test(offsets, transitions, rules: rules) do |path, format|
-        assert_equal(t, @reader.read(path))
+        result = @reader.read(path)
+        assert_equal(t, result)
+        assert_equal(1982, result.annual_rules_start_year)
       end
     end
 
@@ -1658,16 +1648,15 @@ module DataSources
       o2 = TimezoneOffset.new(7200, 3600, 'XDT')
 
       t0 = TimezoneTransition.new(o1, o0, Time.new(1971, 1, 2, 2, 0, 0, 7142).to_i)
-      tn = 1981.upto(ZoneinfoReader.const_get(:GENERATE_UP_TO)).flat_map do |year|
-        [
-          TimezoneTransition.new(o2, o1, Time.new(year,  4, 10, 1, 0, 0,  7200).to_i),
-          TimezoneTransition.new(o1, o2, Time.new(year, 10, 27, 2, 0, 0, 10800).to_i)
-        ]
-      end
-      t = [t0] + tn
+      t1 = TimezoneTransition.new(o2, o1, Time.new(1981,  4, 10, 1, 0, 0,  7200).to_i)
+      t2 = TimezoneTransition.new(o1, o2, Time.new(1981, 10, 27, 2, 0, 0, 10800).to_i)
+      t3 = TimezoneTransition.new(o2, o1, Time.new(1982,  4, 10, 1, 0, 0,  7200).to_i)
+      t = [t0, t1, t2, t3]
 
       tzif_test(offsets, transitions, rules: rules) do |path, format|
-        assert_equal(t, @reader.read(path))
+        result = @reader.read(path)
+        assert_equal(t, result)
+        assert_equal(1982, result.annual_rules_start_year)
       end
     end
 
@@ -1698,16 +1687,14 @@ module DataSources
 
       t0 = TimezoneTransition.new(o1, o0, Time.new(1971,  1,  2, 1, 0, 0, 7142).to_i)
       t1 = TimezoneTransition.new(o2, o1, Time.new(1981, 10, 27, 1, 0, 0, 7200).to_i)
-      tn = 1982.upto(ZoneinfoReader.const_get(:GENERATE_UP_TO)).flat_map do |year|
-        [
-          TimezoneTransition.new(o1, o2, Time.new(year,  4, 10, 2, 0, 0, 10800).to_i),
-          TimezoneTransition.new(o2, o1, Time.new(year, 10, 27, 1, 0, 0,  7200).to_i)
-        ]
-      end
-      t = [t0, t1] + tn
+      t2 = TimezoneTransition.new(o1, o2, Time.new(1982,  4, 10, 2, 0, 0, 10800).to_i)
+      t3 = TimezoneTransition.new(o2, o1, Time.new(1982, 10, 27, 1, 0, 0,  7200).to_i)
+      t = [t0, t1, t2, t3]
 
       tzif_test(offsets, transitions, rules: rules) do |path, format|
-        assert_equal(t, @reader.read(path))
+        result = @reader.read(path)
+        assert_equal(t, result)
+        assert_equal(1983, result.annual_rules_start_year)
       end
     end
 
@@ -1739,16 +1726,15 @@ module DataSources
 
       t0 = TimezoneTransition.new(o1, o0, Time.new(1971,  1,  2, 1, 0, 0, 7142).to_i)
       t1 = TimezoneTransition.new(o2, o1, Time.new(1981, 10, 27, 1, 0, 0, 7200).to_i)
-      tn = 1982.upto(ZoneinfoReader.const_get(:GENERATE_UP_TO)).flat_map do |year|
-        [
-          TimezoneTransition.new(o1, o2, Time.new(year,  4, 10, 2, 0, 0, 10800).to_i),
-          TimezoneTransition.new(o2, o1, Time.new(year, 10, 27, 1, 0, 0,  7200).to_i)
-        ]
-      end
-      t = [t0, t1] + tn
+      t2 = TimezoneTransition.new(o1, o2, Time.new(1982,  4, 10, 2, 0, 0, 10800).to_i)
+      t3 = TimezoneTransition.new(o2, o1, Time.new(1982, 10, 27, 1, 0, 0,  7200).to_i)
+      t4 = TimezoneTransition.new(o1, o2, Time.new(1983,  4, 10, 2, 0, 0, 10800).to_i)
+      t = [t0, t1, t2, t3, t4]
 
       tzif_test(offsets, transitions, rules: rules) do |path, format|
-        assert_equal(t, @reader.read(path))
+        result = @reader.read(path)
+        assert_equal(t, result)
+        assert_equal(1983, result.annual_rules_start_year)
       end
     end
 
@@ -1777,33 +1763,29 @@ module DataSources
       o2 = TimezoneOffset.new(10800,     0, 'XST')
 
       t0 = TimezoneTransition.new(o1, o0, Time.new(1971, 1, 2, 2, 0, 0, 7142).to_i)
-      tn = 1981.upto(ZoneinfoReader.const_get(:GENERATE_UP_TO)).flat_map do |year|
-        [
-          TimezoneTransition.new(o2, o1, Time.new(year,  4, 10, 1, 0, 0,  7200).to_i),
-          TimezoneTransition.new(o1, o2, Time.new(year, 10, 27, 2, 0, 0, 10800).to_i)
-        ]
-      end
-      t = [t0] + tn
+      t1 = TimezoneTransition.new(o2, o1, Time.new(1981,  4, 10, 1, 0, 0,  7200).to_i)
+      t2 = TimezoneTransition.new(o1, o2, Time.new(1981, 10, 27, 2, 0, 0, 10800).to_i)
+      t = [t0, t1, t2]
 
       tzif_test(offsets, transitions, rules: rules) do |path, format|
-        assert_equal(t, @reader.read(path))
+        result = @reader.read(path)
+        assert_equal(t, result)
+        assert_equal(1982, result.annual_rules_start_year)
       end
     end
 
-    def test_read_tz_string_extends_single_transition_in_final_year
+    def test_read_tz_string_extends_single_transition_in_last_year
       offsets = [
         {gmtoff:  7142, isdst: false, abbrev: 'LMT'},
         {gmtoff:  7200, isdst: false, abbrev: 'XST'},
         {gmtoff: 10800, isdst: true,  abbrev: 'XDT'}
       ]
 
-      generate_up_to = ZoneinfoReader.const_get(:GENERATE_UP_TO)
-
       transitions = [
-        {at: Time.new(              1971,  1,  2, 2, 0, 0,  7142), offset_index: 1},
-        {at: Time.new(generate_up_to - 1,  4, 10, 1, 0, 0,  7200), offset_index: 2},
-        {at: Time.new(generate_up_to - 1, 10, 27, 2, 0, 0, 10800), offset_index: 1},
-        {at: Time.new(generate_up_to,      4, 10, 1, 0, 0,  7200), offset_index: 2}
+        {at: Time.new(1971, 1, 2, 2, 0, 0, 7142), offset_index: 1},
+        {at: Time.new(2037, 4, 10, 1, 0, 0, 7200), offset_index: 2},
+        {at: Time.new(2037, 10, 27, 2, 0, 0, 10800), offset_index: 1},
+        {at: Time.new(2038, 4, 10, 1, 0, 0, 7200), offset_index: 2}
       ]
 
       rules = AnnualRules.new(
@@ -1818,16 +1800,15 @@ module DataSources
       o2 = TimezoneOffset.new(7200, 3600, 'XDT')
 
       t0 = TimezoneTransition.new(o1, o0, Time.new(1971, 1, 2, 2, 0, 0, 7142).to_i)
-      tn = (generate_up_to - 1).upto(generate_up_to).flat_map do |year|
-        [
-          TimezoneTransition.new(o2, o1, Time.new(year,  4, 10, 1, 0, 0,  7200).to_i),
-          TimezoneTransition.new(o1, o2, Time.new(year, 10, 27, 2, 0, 0, 10800).to_i)
-        ]
-      end
-      t = [t0] + tn
+      t1 = TimezoneTransition.new(o2, o1, Time.new(2037, 4, 10, 1, 0, 0, 7200).to_i)
+      t2 = TimezoneTransition.new(o1, o2, Time.new(2037, 10, 27, 2, 0, 0, 10800).to_i)
+      t3 = TimezoneTransition.new(o2, o1, Time.new(2038, 4, 10, 1, 0, 0, 7200).to_i)
+      t = [t0, t1, t2, t3]
 
       tzif_test(offsets, transitions, rules: rules) do |path, format|
-        assert_equal(t, @reader.read(path))
+        result = @reader.read(path)
+        assert_equal(t, result)
+        assert_equal(2038, result.annual_rules_start_year)
       end
     end
 
@@ -1838,12 +1819,10 @@ module DataSources
         {gmtoff: 10800, isdst: true,  abbrev: 'XDT'}
       ]
 
-      generate_up_to = ZoneinfoReader.const_get(:GENERATE_UP_TO)
-
       transitions = [
-        {at: Time.new(          1971,  1,  2, 2, 0, 0,  7142), offset_index: 1},
-        {at: Time.new(generate_up_to,  4, 10, 1, 0, 0,  7200), offset_index: 2},
-        {at: Time.new(generate_up_to, 10, 27, 2, 0, 0, 10800), offset_index: 1},
+        {at: Time.new(1971, 1, 2, 2, 0, 0, 7142), offset_index: 1},
+        {at: Time.new(2038, 4, 10, 1, 0, 0, 7200), offset_index: 2},
+        {at: Time.new(2038, 10, 27, 2, 0, 0, 10800), offset_index: 1}
       ]
 
       rules = AnnualRules.new(
@@ -1858,11 +1837,13 @@ module DataSources
       o2 = TimezoneOffset.new(7200, 3600, 'XDT')
 
       t0 = TimezoneTransition.new(o1, o0, Time.new(          1971,  1,  2, 2, 0, 0,  7142).to_i)
-      t1 = TimezoneTransition.new(o2, o1, Time.new(generate_up_to,  4, 10, 1, 0, 0,  7200).to_i)
-      t2 = TimezoneTransition.new(o1, o2, Time.new(generate_up_to, 10, 27, 2, 0, 0, 10800).to_i)
+      t1 = TimezoneTransition.new(o2, o1, Time.new(2038,  4, 10, 1, 0, 0,  7200).to_i)
+      t2 = TimezoneTransition.new(o1, o2, Time.new(2038, 10, 27, 2, 0, 0, 10800).to_i)
 
       tzif_test(offsets, transitions, rules: rules) do |path, format|
-        assert_equal([t0,t1,t2], @reader.read(path))
+        result = @reader.read(path)
+        assert_equal([t0,t1,t2], result)
+        assert_equal(2039, result.annual_rules_start_year)
       end
     end
 
@@ -1885,17 +1866,12 @@ module DataSources
       o2 = TimezoneOffset.new(3600,    0, 'XST')
 
       t0 = TimezoneTransition.new(o1, o0, Time.new(2000,  4, 10, 1, 0, 0, 3542).to_i)
-      t1 = TimezoneTransition.new(o2, o1, Time.new(2000, 10, 27, 2, 0, 0, 7200).to_i)
-      tn = 2001.upto(ZoneinfoReader.const_get(:GENERATE_UP_TO)).flat_map do |year|
-        [
-          TimezoneTransition.new(o1, o2, Time.new(year,  4, 10, 1, 0, 0, 3600).to_i),
-          TimezoneTransition.new(o2, o1, Time.new(year, 10, 27, 2, 0, 0, 7200).to_i)
-        ]
-      end
-      t = [t0, t1] + tn
+      t = [t0]
 
       tzif_test(offsets, transitions, rules: rules) do |path, format|
-        assert_equal(t, @reader.read(path))
+        result = @reader.read(path)
+        assert_equal(t, result)
+        assert_equal(2000, result.annual_rules_start_year)
       end
     end
 
@@ -1939,17 +1915,12 @@ module DataSources
       t1 = TimezoneTransition.new(o2, o1, Time.new(1981,  4, 10, 1, 0, 0,  7200).to_i)
       t2 = TimezoneTransition.new(o1, o2, Time.new(1981, 10, 27, 2, 0, 0, 10800).to_i)
       t3 = TimezoneTransition.new(o2, o1, Time.new(1982,  4, 10, 1, 0, 0,  7200).to_i)
-      t4 = TimezoneTransition.new(o1, o2, Time.new(1982, 10, 27, 2, 0, 0, 10800).to_i)
-      tn = 1983.upto(ZoneinfoReader.const_get(:GENERATE_UP_TO)).flat_map do |year|
-        [
-          TimezoneTransition.new(o2, o1, Time.new(year,  4, 11, 1, 0, 0,  7200).to_i),
-          TimezoneTransition.new(o1, o2, Time.new(year, 10, 27, 2, 0, 0, 10800).to_i)
-        ]
-      end
-      t = [t0, t1, t2, t3, t4] + tn
+      t = [t0, t1, t2, t3]
 
       tzif_test(offsets, transitions, rules: rules) do |path, format|
-        assert_equal(t, @reader.read(path))
+        result = @reader.read(path)
+        assert_equal(t, result)
+        assert_equal(1982, result.annual_rules_start_year)
       end
     end
 
@@ -1991,16 +1962,12 @@ module DataSources
       t0 = TimezoneTransition.new(o1, o0, Time.new(1971,  1,  2, 2, 0, 0,  7142).to_i)
       t1 = TimezoneTransition.new(o2, o1, Time.new(1981,  4, 10, 1, 0, 0,  7200).to_i)
       t2 = TimezoneTransition.new(o1, o2, Time.new(1981, 10, 27, 2, 0, 0, 10800).to_i)
-      tn = 1982.upto(ZoneinfoReader.const_get(:GENERATE_UP_TO)).flat_map do |year|
-        [
-          TimezoneTransition.new(o2, o1, Time.new(year,  4, 10, 1, 0, 0,  7200).to_i),
-          TimezoneTransition.new(o1, o2, Time.new(year, 10, 28, 2, 0, 0, 10800).to_i)
-        ]
-      end
-      t = [t0, t1, t2] + tn
+      t = [t0, t1, t2]
 
       tzif_test(offsets, transitions, rules: rules) do |path, format|
-        assert_equal(t, @reader.read(path))
+        result = @reader.read(path)
+        assert_equal(t, result)
+        assert_equal(1982, result.annual_rules_start_year)
       end
     end
 
@@ -2054,16 +2021,44 @@ module DataSources
       o2 = TimezoneOffset.new(7200, 3600, 'XDT')
 
       t0 = TimezoneTransition.new(o1, o0, Time.new(1961, 1, 2, 2, 0, 0, 7142).to_i)
-      tn = 1962.upto(ZoneinfoReader.const_get(:GENERATE_UP_TO)).flat_map do |year|
-        [
-          TimezoneTransition.new(o2, o1, Time.new(year,  4, 10, 1, 0, 0,  7200).to_i),
-          TimezoneTransition.new(o1, o2, Time.new(year, 10, 27, 2, 0, 0, 10800).to_i)
-        ]
-      end
-      t = [t0] + tn
+      t1 = TimezoneTransition.new(o2, o1, Time.new(1962,  4, 10, 1, 0, 0,  7200).to_i)
+      t2 = TimezoneTransition.new(o1, o2, Time.new(1962, 10, 27, 2, 0, 0, 10800).to_i)
+      t = [t0, t1, t2]
 
       tzif_test(offsets, transitions, rules: rules) do |path, format|
-        assert_equal(t, @reader.read(path))
+        result = @reader.read(path)
+        assert_equal(t, result)
+        assert_equal(1963, result.annual_rules_start_year)
+      end
+    end
+
+    def test_read_tz_string_continues_from_final_year_without_duplicating_matching_transition
+      offsets = [
+        {gmtoff: 36000, isdst: false, abbrev: 'XST'},
+        {gmtoff: 39600, isdst: true, abbrev: 'XDT'}
+      ]
+
+      transitions = [
+        {at: Time.new(3000, 4, 9, 23, 0, 0, 39600), offset_index: 0}
+      ]
+
+      rules = AnnualRules.new(
+        TimezoneOffset.new(36000, 0, 'XST'),
+        TimezoneOffset.new(36000, 3600, 'XDT'),
+        JulianDayOfYearTransitionRule.new(300, 90000),
+        JulianDayOfYearTransitionRule.new(100, -3600)
+      )
+
+      last = TimezoneTransition.new(
+        TimezoneOffset.new(36000, 0, 'XST'),
+        TimezoneOffset.new(36000, 0, 'XST'),
+        Time.new(3000, 4, 9, 23, 0, 0, 39600).to_i)
+
+      tzif_test(offsets, transitions, rules: rules) do |path, format|
+        result = @reader.read(path)
+        assert_equal([last], result)
+        assert_equal(rules, result.annual_rules)
+        assert_equal(3000, result.annual_rules_start_year)
       end
     end
 

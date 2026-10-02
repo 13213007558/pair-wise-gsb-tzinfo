@@ -40,6 +40,23 @@ module TZInfo
       @dst_end_rule = dst_end_rule
     end
 
+    # Determines if this {AnnualRules} is equal to another instance.
+    #
+    # @param r [Object] the instance to test for equality.
+    # @return [Boolean] `true` if `r` is an {AnnualRules} with the same offsets
+    #   and rules, otherwise `false`.
+    def ==(r)
+      r.kind_of?(AnnualRules) &&
+        std_offset == r.std_offset && dst_offset == r.dst_offset &&
+        dst_start_rule == r.dst_start_rule && dst_end_rule == r.dst_end_rule
+    end
+    alias eql? ==
+
+    # @return [Integer] a hash based on the offsets and rules.
+    def hash
+      [@std_offset, @dst_offset, @dst_start_rule, @dst_end_rule].hash
+    end
+
     # Returns the transitions between standard and daylight savings time for a
     # given year. The results are ordered by time of occurrence (earliest to
     # latest).

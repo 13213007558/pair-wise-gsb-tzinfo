@@ -49,6 +49,56 @@ module DataSources
       assert_match(/\btransitions\b/, error.message)
     end
 
+    def test_annual_rules_far_future_timeline
+      std_offset = TimezoneOffset.new(36000, 0, 'XST')
+      dst_offset = TimezoneOffset.new(36000, 3600, 'XDT')
+      rules = AnnualRules.new(std_offset, dst_offset,
+        JulianDayOfYearTransitionRule.new(300, 90000),
+        JulianDayOfYearTransitionRule.new(100, -3600))
+
+      last_end = Time.utc(2038, 4, 9, 12)
+      last_transition = TimezoneTransition.new(std_offset, dst_offset, last_end.to_i)
+      info = TransitionsDataTimezoneInfo.new('Test/Zone', [last_transition], rules, 2038)
+
+      assert_equal(dst_offset, info.period_for(Timestamp.utc(Time.utc(2038, 1, 1).to_i)).offset)
+      assert_equal(std_offset, info.period_for(Timestamp.utc(last_end.to_i)).offset)
+      assert_equal(dst_offset, info.period_for(Timestamp.utc(Time.utc(3000, 1, 1).to_i)).offset)
+      assert_equal(std_offset, info.period_for(Timestamp.utc(Time.utc(3000, 7, 1).to_i)).offset)
+
+      ambiguous = Timestamp.for(Time.utc(3000, 4, 9, 22, 30), :ignore)
+      assert_equal([dst_offset, std_offset], info.periods_for_local(ambiguous).map(&:offset))
+
+      invalid = Timestamp.for(Time.utc(3000, 10, 28, 1, 30), :ignore)
+      assert_equal([], info.periods_for_local(invalid))
+
+      timezone = info.create_timezone
+      assert_equal(Time.utc(3000, 4, 9, 11, 30), timezone.local_to_utc(Time.utc(3000, 4, 9, 22, 30), true))
+      assert_equal(Time.utc(3000, 4, 9, 12, 30), timezone.local_to_utc(Time.utc(3000, 4, 9, 22, 30), false))
+
+      expected_end = TimezoneTransition.new(std_offset, dst_offset, Time.utc(3000, 4, 9, 12).to_i)
+      expected_start = TimezoneTransition.new(dst_offset, std_offset, Time.utc(3000, 10, 27, 15).to_i)
+      transitions = info.transitions_up_to(
+        Timestamp.utc(Time.utc(3001, 1, 1).to_i),
+        Timestamp.utc(Time.utc(3000, 1, 1).to_i))
+
+      assert_equal([expected_end, expected_start], transitions)
+      assert_equal(Time.new(3000, 4, 9, 22, 0, 0, 36000), transitions[0].local_start_at.to_time)
+      assert_equal(Time.new(3000, 10, 28, 2, 0, 0, 39600), transitions[1].local_start_at.to_time)
+      assert_equal(1, info.transitions.length)
+    end
+
+    def test_finite_transitions_remain_finite_without_annual_rules
+      std_offset = TimezoneOffset.new(0, 0, 'XST')
+      last_transition = TimezoneTransition.new(std_offset, std_offset, Time.utc(2038, 1, 1).to_i)
+      info = TransitionsDataTimezoneInfo.new('Test/Zone', [last_transition])
+
+      assert_equal(std_offset, info.period_for(Timestamp.utc(Time.utc(3000, 1, 1).to_i)).offset)
+      assert_equal([], info.transitions_up_to(
+        Timestamp.utc(Time.utc(3001, 1, 1).to_i),
+        Timestamp.utc(Time.utc(3000, 1, 1).to_i)))
+      assert_equal(1, info.transitions.length)
+    end
+
     def test_period_for
       o1 = TimezoneOffset.new(-17900, 0,    'TESTLMT')
       o2 = TimezoneOffset.new(-18000, 3600, 'TESTD')
