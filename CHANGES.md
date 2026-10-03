@@ -1,5 +1,15 @@
 # Changes
 
+## Unreleased
+
+* Added TZInfo::DataSourceComparator, which compares a time zone between two
+  explicitly supplied DataSource instances over a UTC window. It reports the
+  minimal intervals where the observed UTC offset, DST flag or abbreviation
+  differ, the local time periods that are added, removed or change
+  multiplicity, and link (alias) changes that do not affect the observed
+  behaviour. The comparison never reads or modifies the process-wide data
+  source, so existing Timezone instances are unaffected.
+
 ## Version 2.0.6 - 28-Jan-2023
 
 * Eliminate `Object#untaint` deprecation warnings on JRuby 9.4.0.0. #145.
