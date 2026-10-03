@@ -52,6 +52,9 @@ require_relative 'tzinfo/data_source'
 require_relative 'tzinfo/data_sources/ruby_data_source'
 require_relative 'tzinfo/data_sources/zoneinfo_data_source'
 
+require_relative 'tzinfo/data_source_comparison'
+require_relative 'tzinfo/data_source_comparer'
+
 require_relative 'tzinfo/timezone_period'
 require_relative 'tzinfo/offset_timezone_period'
 require_relative 'tzinfo/transitions_timezone_period'
